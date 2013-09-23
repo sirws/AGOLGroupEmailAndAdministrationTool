@@ -10,3 +10,6 @@ Contact ArcGIS Online subscription group members and owners by email. Available 
     Email all group owners
 
 This tool has also been extended to all subscription Administrators to assign all organization users to a group.
+
+You can try it live here:
+http://nwdemo3.esri.com/agoladmin/emailgroups.htm
