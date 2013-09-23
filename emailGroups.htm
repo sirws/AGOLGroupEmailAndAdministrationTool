@@ -1,0 +1,560 @@
+<!-- 
+Email All users in a group or org
+Email admins of all groups or single group
+Generate a list of items added by group or by org on a specific data or in a range - perhaps report credit?
+Report items that are missing description/credit/thumbnail/specific tags/ - with scope (public... not public)
+select user and add user to specific groups
+search or filter for users/groups
+organization wide tags on items
+-->
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AGOL Subscription Group Emailer</title>
+    <link rel="stylesheet" href="//js.arcgis.com/3.7/js/dojo/dijit/themes/claro/claro.css">
+    <link rel="stylesheet" href="//js.arcgis.com/3.7/js/esri/css/esri.css">
+    <link rel="stylesheet" href="//js.arcgis.com/3.7/js/dojo/dojo/resources/dojo.css">
+    <link rel="stylesheet" href="//js.arcgis.com/3.7/js/dgrid/css/dgrid.css">
+    <link rel="stylesheet" href="//js.arcgis.com/3.7/js/dgrid/css/skins/claro.css">
+    <style>
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow:hidden;
+    }
+    #grid {
+      height:100%;
+    }
+    #grid .dgrid-row {
+      clear:both;
+      min-height:64px;
+      padding:0.5em;
+    }
+    #gridpane{
+      overflow:hidden;
+    }
+    .thumbnail {
+      float:left;
+      width:72px;
+      height:64px;
+    }
+    .thumbnail2 {
+      float:right;
+      width:48px;
+      height:48px;
+    }
+    .group-id {
+      font-weight:bold;
+    }
+    .title {
+      font-weight:bold;
+      margin-bottom:1em;
+    }
+    #signIn {
+      position:absolute;
+      top:18px;
+      right:20px;
+      text-decoration:underline;
+      cursor:pointer;
+    }
+    #emailOrgButton {
+      position:absolute;
+      top:38px;
+      right:10px;
+    }
+    #emailAdminButton {
+      position:absolute;
+      top:38px;
+      right:82px;
+    }
+    </style>
+    <script>var dojoConfig = { parseOnLoad: true };</script>
+    <script src="//js.arcgis.com/3.7/"></script>
+    <script>
+    // dojo requires
+    dojo.require("dijit.layout.BorderContainer");
+    dojo.require("dijit.layout.ContentPane");
+    dojo.require("dgrid.Grid");
+    dojo.require("dijit.Dialog");
+    dojo.require("dijit.form.Button");
+    dojo.require("esri.arcgis.Portal");
+    dojo.require("dojo.DeferredList");
+    dojo.require("dijit.form.Textarea");
+
+    // global vars
+    var portal, portalUrl = document.location.protocol + '//www.arcgis.com';
+    var grid;
+    var allOrgEmails = [];
+    var allOrgEmailsWithNames = [];
+    var allOrgUsernames = [];
+    var allOrgGroupAdmins = [];
+    var allOrgGroupAdminsEmails = [];
+    var theActiveGroup = "";
+    
+    //constants
+    var numGroupsPerRequest = 100;
+    var numUsersPerRequest = 100;
+
+    //display a list of groups that match the input user name
+    function showGroupResults(results) {
+      //clear any existing results
+      var data = [];
+      if (grid) {
+        grid.refresh();
+      }
+      allOrgGroupAdmins = [];
+      if (results.length > 0) {
+        //create an array of attributes for each group - we'll display these in a dojo dgrid
+        data = dojo.map(results, function (group) {
+          if (dojo.indexOf(allOrgGroupAdmins, group.owner) == -1) {
+            allOrgGroupAdmins.push(group.owner);
+          }
+          return {
+            'snippet': group.snippet,
+            'title': group.title,
+            'url': group.url,
+            'thumbnail': group.thumbnailUrl || '',
+            'id': group.id,
+            'owner': group.owner
+          }
+        });
+        console.log(allOrgGroupAdmins);
+        generateGroupAdminEmailList(allOrgGroupAdmins);
+        //create the grid
+        grid = new dgrid.Grid({
+          columns: {
+            thumbnail: 'Group Icon',
+            title: 'Group',
+            snippet: 'Description',
+            id: 'Group ID'
+          },
+          renderRow: renderTable,
+          //this function renders the table in a non-grid looking view
+          showHeader: false
+        }, "grid");
+        grid.renderArray(data);
+      } else {
+        dojo.byId('groupResults').innerHTML = '<h2>Group Results</h2><p>No groups were found. If the group is not public use the sign-in link to sign in and find private groups.</p>';
+      }
+    }
+
+    function renderTable(obj, options) {
+      var template = '<div class="thumbnail"><a href="#" onclick="javascript:generateEmailList(\'${5}\')"><img src=\'Email-icon-square.png\' width=48 height=48 alt=\'Email Group\'></a></div><div class="thumbnail"><a href="#" onclick="javascript:showAddUsersDialog(\'${5}\')"><img src=\'group-icon.png\' width=48 height=48 alt=\'Assign Users To Group\'></a></div><div class="thumbnail"><img src="${0}" width="50" height="50"/></div><a target="_blank" class="title" href=${1}>${2}</a><span> <i> (${3} ) </i></span><div class="summary">${4} </div><div class="group=id">${5}</div>';
+      var summary = obj.snippet || '';
+      var url = portalUrl + '/home/group.html?groupid=id:' + obj.id;
+      var thumbnail = obj.thumbnail || '';
+      return div = dojo.create("div",{
+        innerHTML : dojo.string.substitute(template,[thumbnail,url,obj.title,obj.owner,summary,obj.id])
+      });
+    }
+    
+    function generateGroupAdminEmailList(groupAdmins) {
+      var defArray = [];
+      allOrgGroupAdminsEmails = [];
+      dojo.forEach(groupAdmins, function(user){
+        var layerUrl = portalUrl + '/sharing/rest/community/users/' + user;
+        var layersRequest = esri.request({
+          url: layerUrl,
+          content: { f: "json" },
+          handleAs: "json",
+          callbackParamName: "callback"
+        });
+        defArray.push(layersRequest.then());
+      });
+      dList = new dojo.DeferredList(defArray);
+      dList.then(function(results){
+        dojo.forEach(results, function(result) {
+          if (result[1].email) {
+            //allOrgGroupAdminsEmails.push(result[1].fullName + " " + result[1].email);
+            allOrgGroupAdminsEmails.push(result[1].fullName + " &lt;" + result[1].email + "&gt;");
+          } else {
+            userNames.push(result[1].fullName + ": " + result[1].username);
+          }
+        });
+        console.log(allOrgGroupAdminsEmails);
+        dojo.byId("emailCopy3").innerHTML = "";
+        dojo.byId("emailCopy3").innerHTML = allOrgGroupAdminsEmails.join(";\n");
+        //dojo.byId("emailCopy3").innerHTML = "foo";
+        dojo.style(dojo.byId('emailCopy3'), "display", "none");
+        dijit.byId('showButton3').attr("label", "Show e-mail addresses");
+        dojo.style(dojo.byId('emailAdminButton'), "display", "block");
+        
+        dojo.byId("emailDiv3").innerHTML = "<a href='mailto:" + allOrgGroupAdminsEmails.join(";") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>to</a><br/>";
+        dojo.byId("emailDiv3").innerHTML += "<a href='mailto:?cc=" + allOrgGroupAdminsEmails.join(";") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>cc</a><br/>";
+        dojo.byId("emailDiv3").innerHTML += "<a href='mailto:?bcc=" + allOrgGroupAdminsEmails.join(";") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>bcc</a><br/>&nbsp;</br/>";
+      });
+
+    }
+    
+    function showAddUsersDialog(theGroup) {
+      theActiveGroup = theGroup;
+      dojo.byId("ABintro1").innerHTML = "If you would like to add all " + allOrgUsernames.length + " Organization users to this group, click 'Ok'.  Otherwise, click 'Cancel'."
+      dijit.byId("dialogFour").show();
+    }
+    
+    function addUsersToGroup() {
+      var layerUrl = portalUrl + '/sharing/rest/community/groups/' + theActiveGroup + "/addUsers";
+      var layersRequest = esri.request({
+        url: layerUrl,
+        content: { f: "json", users: allOrgUsernames.toString() },
+        handleAs: "json",
+        callbackParamName: "callback"
+      }, {usePost: true});
+      layersRequest.then(function(results){
+        console.log(results);
+        
+      })
+    }
+    
+    function generateEmailList(theGroup, theScope, theDestination) {
+      //get group by id
+      var search = "id: " + theGroup;
+      var groupName = "";
+      var emailArray = [];
+      var userNames = [];
+      var defArray = [];
+      portal.queryGroups({q: search}).then(function (data) {
+        dojo.forEach(data.results, function(group){
+          groupName = group.title;
+          group.getMembers().then(function (data) {
+            dojo.forEach(data.users, function(user){
+              var layerUrl = portalUrl + '/sharing/rest/community/users/' + user;
+              var layersRequest = esri.request({
+                url: layerUrl,
+                content: { f: "json" },
+                handleAs: "json",
+                callbackParamName: "callback"
+              });
+              defArray.push(layersRequest.then());
+            });
+            dojo.forEach(data.admins, function(user){
+              var layerUrl = portalUrl + '/sharing/rest/community/users/' + user;
+              var layersRequest = esri.request({
+                url: layerUrl,
+                content: { f: "json" },
+                handleAs: "json",
+                callbackParamName: "callback"
+              });
+              defArray.push(layersRequest.then());
+            });
+            dList = new dojo.DeferredList(defArray);
+            dList.then(function(results){
+              dojo.forEach(results, function(result) {
+                if (result[1].email) {
+                  //emailArray.push(result[1].fullName + " " + result[1].email);
+                  emailArray.push(result[1].fullName + " &lt;" + result[1].email + "&gt;");
+                } else {
+                  userNames.push(result[1].fullName + ": " + result[1].username);
+                }
+              });
+              dojo.byId("emailDiv").innerHTML = "<a href='mailto:" + emailArray.join(";") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>to</a><br/>";
+              dojo.byId("emailDiv").innerHTML += "<a href='mailto:?cc=" + emailArray.join(";") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>cc</a><br/>";
+              dojo.byId("emailDiv").innerHTML += "<a href='mailto:?bcc=" + emailArray.join(";") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>bcc</a><br/>&nbsp;</br/>";
+              dojo.byId("emailCopy").innerHTML = emailArray.join(";\n");
+              if (userNames.length > 0) {
+                dojo.byId("noEmailDiv").innerHTML = "The following users are in the group, but their email address is unkown<br/>";
+                dojo.byId("noEmailDiv").innerHTML += userNames.join("<br/>")
+              }
+              dojo.style(dojo.byId('emailCopy'), "display", "none");
+              dijit.byId('showButton').attr("label", "Show e-mail addresses");
+              dijit.byId("dialogOne").show();
+            });
+          });
+        });
+      });
+      
+    }
+
+    function toggleEmail(){
+      if (dijit.byId('showButton').attr("label") == "Show e-mail addresses") {
+        dojo.style(dojo.byId('emailCopy'), "display", "block");
+        dijit.byId('showButton').attr("label", "Hide e-mail addresses");
+      } else {
+        dojo.style(dojo.byId('emailCopy'), "display", "none");
+        dijit.byId('showButton').attr("label", "Show e-mail addresses");
+      }
+    }
+    
+    function toggleEmail2(){
+      if (dijit.byId('showButton2').attr("label") == "Show e-mail addresses") {
+        dojo.style(dojo.byId('emailCopy2'), "display", "block");
+        dijit.byId('showButton2').attr("label", "Hide e-mail addresses");
+      } else {
+        dojo.style(dojo.byId('emailCopy2'), "display", "none");
+        dijit.byId('showButton2').attr("label", "Show e-mail addresses");
+      }
+    }
+    
+    function toggleEmail3(){
+      if (dijit.byId('showButton3').attr("label") == "Show e-mail addresses") {
+        dojo.style(dojo.byId('emailCopy3'), "display", "block");
+        dijit.byId('showButton3').attr("label", "Hide e-mail addresses");
+      } else {
+        dojo.style(dojo.byId('emailCopy3'), "display", "none");
+        dijit.byId('showButton3').attr("label", "Show e-mail addresses");
+      }
+    }
+    
+    // find groups based on input keyword
+    function findArcGISGroup(numPerRequest) {
+      var keyword = dojo.byId('groupFinder').value;
+      var searchString = "";
+      if (keyword != "") {
+        searchString = "(" + keyword + " AND accountid: " + portal.id + ")";
+        //searchString = "(" + keyword + ")";
+      } else {
+        searchString = "accountid: " + portal.id;
+      }
+      var params = {
+        q:  searchString,
+        num: numPerRequest  //find items - max is 100
+       };
+       portal.queryGroups(params).then(function (data) {
+        var dataArray = [];
+        if (data.nextQueryParams.start != -1) {
+          dojo.forEach(data.results, function(result) {
+            dataArray.push(result);
+          });   
+          var defArray = [];
+          totalAdditionalSearches = (data.total / numPerRequest) - 1;
+          var prevStart = 1;
+          var defArray = [];
+          for (var i = 0; i < totalAdditionalSearches; i++) {
+            prevStart += numPerRequest;
+            params.start = prevStart;
+            //get next numPerRequest records
+            defArray.push(portal.queryGroups(params).then());
+          }
+          dList = new dojo.DeferredList(defArray);
+          dList.then(function(results){
+            dojo.forEach(results, function(result){
+              console.log(result);
+              dojo.forEach(result[1].results, function(result) {
+                dataArray.push(result);
+              });    
+            });
+            showGroupResults(dataArray);
+          });
+        } else {
+          showGroupResults(data.results);
+        }
+       });
+    }
+
+    // gets private groups as well
+    function signIn() {
+      portal = new esri.arcgis.Portal(portalUrl);
+      
+      var signInLink = dojo.byId('signIn');
+
+      if (signInLink.innerHTML.indexOf('In') !== -1) {
+        portal.signIn().then(function (loggedInUser) {
+          if (loggedInUser.role == "org_admin") {
+            //portalUrl = document.location.protocol + "//" + loggedInUser.portal.urlKey + "." + loggedInUser.portal.customBaseUrl;
+            console.log(portal.id);
+            getUsers(numUsersPerRequest);
+            signInLink.innerHTML = "Sign Out";
+            dojo.byId('groupFinderSubmit').disabled = false;
+            dojo.byId('signIn').disabled = false;
+            findArcGISGroup(numGroupsPerRequest);   // update results
+          } else {
+            portal.signOut();
+            alert("You must be an subsciption administrator to use this tool.");
+            signOutUI();
+          }
+        }, function (error) {
+          signInLink.innerHTML = 'Sign In';   //error so reset sign in link
+        });
+      } else {
+        portal.signOut().then(function (portalInfo) {
+          signOutUI();
+          findArcGISGroup(numGroupsPerRequest);
+        });
+      }
+    }
+    
+    function signOutUI() {
+      dojo.byId('signIn').innerHTML = "Sign In";
+      dojo.style(dojo.byId('emailOrgButton'), "display", "none");
+      dojo.style(dojo.byId('emailAdminButton'), "display", "none");
+    }
+    
+    function getUsers(numPerRequest) {
+      //get all org users email addresses
+      //supports paging if need be
+      //portal API returns a maximum of 100 records per request, if there are more than 100 users, you would need more than 1 request to retrieve all of them
+      var layerUrl = portalUrl + '/sharing/rest/portals/' + portal.id + "/users";
+      var layersRequest = esri.request({
+        url: layerUrl,
+        content: { f: "json", start: 1, num: numPerRequest},
+        handleAs: "json",
+        callbackParamName: "callback"
+      });
+      layersRequest.then(function(results){
+        console.log(results);
+        if (results.nextStart != -1) {
+          dojo.forEach(results.users, function(user){
+            if (dojo.indexOf(allOrgEmailsWithNames, user.fullName + " " + user.email) == -1) {
+              allOrgEmailsWithNames.push(user.fullName + " " + user.email);
+              allOrgEmails.push(user.email);
+            }
+            allOrgUsernames.push(user.username);
+          });
+          totalAdditionalSearches = (results.total / numPerRequest) - 1;
+          var prevStart = 1;
+          var defArray = [];
+          for (var i = 0; i < totalAdditionalSearches; i++) {
+            prevStart += numPerRequest;
+            layersRequest = esri.request({
+              url: layerUrl,
+              content: { f: "json", start: prevStart, num: numPerRequest},
+              handleAs: "json",
+              callbackParamName: "callback"
+            });
+            //get next numPerRequest records
+            defArray.push(layersRequest.then());
+          }
+          dList = new dojo.DeferredList(defArray);
+          dList.then(function(results){
+            dojo.forEach(results, function(result){
+              dojo.forEach(result[1].users, function(user) {
+                if (dojo.indexOf(allOrgEmailsWithNames, user.fullName + " " + user.email) == -1) {
+                  allOrgEmailsWithNames.push(user.fullName + " " + user.email);
+                  allOrgEmails.push(user.email);
+                }
+                allOrgUsernames.push(user.username);
+              });
+            });
+            //dojo.byId("emailDiv2").innerHTML = '<a href=\"mailto:' + escape(allOrgEmails.join(',')) + '&subject=' + escape(portal.name) + '\" onclick=\"javascript:dijit.byId(\'dialogTwo\').hide();\">to</a><br/>';
+            generateAllUsersDialog();
+          });
+        } else {
+          dojo.forEach(results.users, function(user){
+            if (dojo.indexOf(allOrgEmailsWithNames, user.fullName + " " + user.email) == -1) {
+              //allOrgEmails.push(user.fullName + " &lt;" + user.email + "&gt;");
+              allOrgEmailsWithNames.push(user.fullName + " " + user.email);
+              allOrgEmails.push(user.email);
+            }
+            allOrgUsernames.push(user.username);
+          });
+          generateAllUsersDialog();
+        }
+      });
+    }
+    
+    function generateAllUsersDialog() {
+      if (allOrgEmails.join(";").length < 2000) {
+        dojo.byId("emailDiv2").innerHTML = "<a href='mailto:" + allOrgEmails.join(";") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>to</a><br/>";
+        dojo.byId("emailDiv2").innerHTML += "<a href='mailto:?cc=" + allOrgEmails.join(";") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>cc</a><br/>";
+        dojo.byId("emailDiv2").innerHTML += "<a href='mailto:?bcc=" + allOrgEmails.join(";") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>bcc</a><br/>&nbsp;</br/>";
+      } else {
+        dojo.byId("emailDiv2").innerHTML = "There are too many addresses to create mailTo links.<br/>Please copy the email addresses from the text box below.<br>&nbsp;<br/>";
+      }
+      dojo.byId("emailCopy2").innerHTML = allOrgEmailsWithNames.join(";\n");
+      dojo.style(dojo.byId('emailCopy2'), "display", "none");
+      dijit.byId('showButton2').attr("label", "Show e-mail addresses");
+      dojo.style(dojo.byId('emailOrgButton'), "display", "block");
+    }
+    
+    dojo.ready(function () {
+      esri.config.defaults.io.proxyUrl = '../proxy/proxy.ashx';
+      dojo.connect(dijit.byId('showButton'), 'onClick', toggleEmail);
+      dojo.connect(dijit.byId('showButton2'), 'onClick', toggleEmail2);
+      dojo.connect(dijit.byId('showButton3'), 'onClick', toggleEmail3);
+      //create the portal
+      portal = new esri.arcgis.Portal(portalUrl);
+      dojo.connect(portal,'onLoad',function(loaded){
+        //enable the sign-in and find buttons when the portal loads
+        //dojo.byId('groupFinderSubmit').disabled = false;
+        dojo.byId('signIn').disabled = false;
+      });
+
+      //search when enter key is pressed
+      dojo.connect(dojo.byId("groupFinder"), "onkeyup", function (e) {
+        if (e.keyCode === 13) {
+          findArcGISGroup(numGroupsPerRequest);
+        }
+      });
+    });
+    
+    dojo.addOnLoad(function(){
+      esri.id.setProtocolErrorHandler(function() {
+        console.log("protocol");
+        if (window.confirm("Your browser is not CORS enabled. You need to redirect to HTTPS. Continue?")) {
+          window.location = window.location.href.replace(/^http:/i, "https:");
+        }
+      });
+    });
+
+    </script>
+  </head>
+
+  <body class="claro">
+    <div data-dojo-type="dijit.layout.BorderContainer" data-dojo-props="design:'headline',gutters:false"
+    style="width:100%;height:100%;margin:0;">
+      <div data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'top'">
+        <h1>ArcGIS Online Group Emailer</h1>
+        <a id="signIn" disabled='disabled' onclick="signIn();">Sign In</a>
+        <p>Sign-in to search for or list your subscriptions groups.</p>
+        <p>Known limits: Members external to the organization who are members of a group will not show up in the email list as their email is unavailable even to org admins.</p>
+        <input name="groupFinder"  id="groupFinder" placeholder="group name search" value="" size="30" />
+        <input name="groupFinderSubmit" disabled='disabled' type="submit" value="Submit" id="groupFinderSubmit" onclick="findArcGISGroup(numGroupsPerRequest);"/>
+        <span id="emailOrgButton" class="thumbnail2" style="width:80px;display:none"><a href="#" onclick="javascript:dijit.byId('dialogTwo').show();"><img src='Email-icon-square.png' width=48 height=48 alt='Email Org'></a><br/>Email all users</span>
+        <span id="emailAdminButton" class="thumbnail2" style="width:80px;display:none"><a href="#" onclick="javascript:dijit.byId('dialogThree').show();"><img src='Email-icon-square.png' width=48 height=48 alt='Email Group Admins'></a><br/>Email group admins</span>
+      </div>
+      <div id='gridpane' data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'center'">
+        <div id='grid'></div>
+        <div id="groupResults"></div>
+      </div>
+    </div>
+    <div id="dialogOne" data-dojo-type="dijit.Dialog" title="Click to email">
+      <!--<div data-dojo-type="dijit.layout.TabContainer" style="width: 200px; height: 300px;">-->
+        Choose to email the group via To, CC, or BCC<br/>
+        <div data-dojo-type="dijit.layout.ContentPane" title="email" id="emailCP">
+          <div id="emailDiv"></div>
+          <button data-dojo-type="dijit.form.Button" id="showButton">Show e-mail addresses</button>
+          <textarea id="emailCopy" name="emailCopy" cols="50" rows="15" readonly="true"></textarea>
+          <!--<div id="emailCopy"></div>-->
+          <div id="noEmailDiv"></div>
+        </div>
+        <!--<div data-dojo-type="dijit.layout.ContentPane" title="boo">Hi, I'm Tab "boo"</div>-->
+      <!--</div>-->
+    </div>
+    <div id="dialogTwo" data-dojo-type="dijit.Dialog" title="Click to email">
+      <!--<div data-dojo-type="dijit.layout.TabContainer" style="width: 200px; height: 300px;">-->
+        Choose to email all users via To, CC, or BCC<br/>
+        <div data-dojo-type="dijit.layout.ContentPane" title="email" id="emailCP2">
+          <div id="emailDiv2"></div>
+          <button data-dojo-type="dijit.form.Button" id="showButton2">Show e-mail addresses</button>
+          <!--<div id="emailCopy2"></div>-->
+          <textarea id="emailCopy2" name="emailCopy2" cols="50" rows="15" readonly="true"></textarea>
+        </div>
+        <!--<div data-dojo-type="dijit.layout.ContentPane" title="boo">Hi, I'm Tab "boo"</div>-->
+      <!--</div>-->
+    </div>
+    <div id="dialogThree" data-dojo-type="dijit.Dialog" title="Click to email">
+      <!--<div data-dojo-type="dijit.layout.TabContainer" style="width: 200px; height: 300px;">-->
+        Choose to email group admins via To, CC, or BCC<br/>
+        <div data-dojo-type="dijit.layout.ContentPane" title="email" id="emailCP3">
+          <div id="emailDiv3"></div>
+          <button data-dojo-type="dijit.form.Button" id="showButton3">Show e-mail addresses</button>
+          <!--<div id="emailCopy2"></div>-->
+          <textarea id="emailCopy3" name="emailCopy3" cols="50" rows="15" readonly="true"></textarea>
+        </div>
+        <!--<div data-dojo-type="dijit.layout.ContentPane" title="boo">Hi, I'm Tab "boo"</div>-->
+      <!--</div>-->
+    </div>
+    <div id="dialogFour" data-dojo-type="dijit.Dialog" title="Add All Org Users to Group?">
+      <div class="dijitDialogPaneContentArea">
+        <div id="ABintro1" style="width:30em;">If you would like to add all Organization users to this group, click "Ok".  Otherwise, click "Cancel".</div>
+      </div>
+      <div class="dijitDialogPaneActionBar">
+        <button id="ABdialog1button1" data-dojo-type="dijit/form/Button" type="submit" data-dojo-props='onClick:function(){ addUsersToGroup();}'>OK</button>
+        <button id="ABdialog1button2" data-dojo-type="dijit/form/Button" type="button" data-dojo-props='onClick:function(){ dijit.byId("dialogFour").hide();}'>Cancel</button>
+      </div>
+    </div>
+  </body>
+</html>
