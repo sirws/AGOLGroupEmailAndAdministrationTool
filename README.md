@@ -1,4 +1,4 @@
-AGOLGroupEmailAndAdministrationTool
+AGOL Group Email and Administration Tool
 ===================================
 
 ArcGIS Online Organization Group Email and Administration Tools
