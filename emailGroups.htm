@@ -182,9 +182,9 @@ organization wide tags on items
         dijit.byId('showButton3').attr("label", "Show e-mail addresses");
         dojo.style(dojo.byId('emailAdminButton'), "display", "block");
         
-        dojo.byId("emailDiv3").innerHTML = "<a href='mailto:" + allOrgGroupAdminsEmails.join(";") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>to</a><br/>";
-        dojo.byId("emailDiv3").innerHTML += "<a href='mailto:?cc=" + allOrgGroupAdminsEmails.join(";") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>cc</a><br/>";
-        dojo.byId("emailDiv3").innerHTML += "<a href='mailto:?bcc=" + allOrgGroupAdminsEmails.join(";") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>bcc</a><br/>&nbsp;</br/>";
+        dojo.byId("emailDiv3").innerHTML = "<a href='mailto:?to=" + allOrgGroupAdminsEmails.join(",") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>to</a><br/>";
+        dojo.byId("emailDiv3").innerHTML += "<a href='mailto:?cc=" + allOrgGroupAdminsEmails.join(",") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>cc</a><br/>";
+        dojo.byId("emailDiv3").innerHTML += "<a href='mailto:?bcc=" + allOrgGroupAdminsEmails.join(",") + "&subject=Group Owners' onclick='javascript:dijit.byId(\"dialogThree\").hide();'>bcc</a><br/>&nbsp;</br/>";
       });
 
     }
@@ -250,10 +250,10 @@ organization wide tags on items
                   userNames.push(result[1].fullName + ": " + result[1].username);
                 }
               });
-              dojo.byId("emailDiv").innerHTML = "<a href='mailto:" + emailArray.join(";") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>to</a><br/>";
-              dojo.byId("emailDiv").innerHTML += "<a href='mailto:?cc=" + emailArray.join(";") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>cc</a><br/>";
-              dojo.byId("emailDiv").innerHTML += "<a href='mailto:?bcc=" + emailArray.join(";") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>bcc</a><br/>&nbsp;</br/>";
-              dojo.byId("emailCopy").innerHTML = emailArray.join(";\n");
+              dojo.byId("emailDiv").innerHTML = "<a href='mailto:?to=" + emailArray.join(",") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>to</a><br/>";
+              dojo.byId("emailDiv").innerHTML += "<a href='mailto:?cc=" + emailArray.join(",") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>cc</a><br/>";
+              dojo.byId("emailDiv").innerHTML += "<a href='mailto:?bcc=" + emailArray.join(",") + "&subject=" + groupName + "' onclick='javascript:dijit.byId(\"dialogOne\").hide();'>bcc</a><br/>&nbsp;</br/>";
+              dojo.byId("emailCopy").innerHTML = emailArray.join(",\n");
               if (userNames.length > 0) {
                 dojo.byId("noEmailDiv").innerHTML = "The following users are in the group, but their email address is unkown<br/>";
                 dojo.byId("noEmailDiv").innerHTML += userNames.join("<br/>")
@@ -447,13 +447,13 @@ organization wide tags on items
     
     function generateAllUsersDialog() {
       if (allOrgEmails.join(";").length < 2000) {
-        dojo.byId("emailDiv2").innerHTML = "<a href='mailto:" + allOrgEmails.join(";") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>to</a><br/>";
-        dojo.byId("emailDiv2").innerHTML += "<a href='mailto:?cc=" + allOrgEmails.join(";") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>cc</a><br/>";
-        dojo.byId("emailDiv2").innerHTML += "<a href='mailto:?bcc=" + allOrgEmails.join(";") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>bcc</a><br/>&nbsp;</br/>";
+        dojo.byId("emailDiv2").innerHTML = "<a href='mailto:?to=" + allOrgEmails.join(",") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>to</a><br/>";
+        dojo.byId("emailDiv2").innerHTML += "<a href='mailto:?cc=" + allOrgEmails.join(",") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>cc</a><br/>";
+        dojo.byId("emailDiv2").innerHTML += "<a href='mailto:?bcc=" + allOrgEmails.join(",") + "&subject='" + portal.name + "' onclick='javascript:dijit.byId(\"dialogTwo\").hide();'>bcc</a><br/>&nbsp;</br/>";
       } else {
         dojo.byId("emailDiv2").innerHTML = "There are too many addresses to create mailTo links.<br/>Please copy the email addresses from the text box below.<br>&nbsp;<br/>";
       }
-      dojo.byId("emailCopy2").innerHTML = allOrgEmailsWithNames.join(";\n");
+      dojo.byId("emailCopy2").innerHTML = allOrgEmailsWithNames.join(",\n");
       dojo.style(dojo.byId('emailCopy2'), "display", "none");
       dijit.byId('showButton2').attr("label", "Show e-mail addresses");
       dojo.style(dojo.byId('emailOrgButton'), "display", "block");
